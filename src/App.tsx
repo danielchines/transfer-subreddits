@@ -1,6 +1,6 @@
-import Home from './Home';
+// import Home from './Home';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import LoginWithReddit from './LoginWithReddit';
+import Transfer from './Transfer';
 import './App.css';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 
@@ -16,8 +16,8 @@ function App() {
       <ThemeProvider theme={darkTheme}>
         <BrowserRouter>
           <Routes>
-            <Route path='/' element={<Home />} />
-            <Route path='/login/callback' element={<LoginWithReddit />} />
+            <Route path='/' element={<Transfer />} />
+            <Route path='/login/callback' element={<Transfer />} />
           </Routes>
         </BrowserRouter>
       </ThemeProvider>
