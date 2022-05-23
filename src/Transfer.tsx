@@ -5,10 +5,12 @@ import { UserObj } from './types';
 import SubredditList from './SubredditList';
 import Avatar from '@mui/material/Avatar';
 import Chip from '@mui/material/Chip';
+import Alert from '@mui/material/Alert';
 import SubscribeModal from './SubscribeModal';
+import snoowrap from 'snoowrap';
+const userAgent = 'web:com.example.transfersubreddits:v1.0.0 (by /u/dhines5)';
 
 function Transfer() {
-  let { search } = useLocation();
   const [loading, setLoading] = useState({ old: false, new: false });
 
   // const [results, setResults] = useState<SubredditObj[]>([]);
@@ -18,6 +20,7 @@ function Transfer() {
   const [alreadyAddedSubs, setAlreadyAddedSubs] = useState<string[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+  const [errorText, setErrorText] = useState('');
 
   const removeQueryParams = () => {
     const param = searchParams.get('code');
@@ -35,9 +38,8 @@ function Transfer() {
     if (!authCode) {
       setUsersFromStorage();
     } else {
-      setLoading({ old: state === 'transfer_subs_old', new: state === 'transfer_subs_new' });
+      setLoading({ old: true, new: state === 'transfer_subs_new' });
       callRedirect(authCode, state);
-      removeQueryParams();
     }
   }, [searchParams]);
 
@@ -47,9 +49,6 @@ function Transfer() {
       .then((data) => {
         console.log('state:', state);
         if (state === 'transfer_subs_new') {
-          setLoading((cur) => {
-            return { ...cur, new: false };
-          });
           if (data.user) {
             setNewUser(data.user);
             sessionStorage.setItem('new_user', JSON.stringify(data.user));
@@ -59,22 +58,21 @@ function Transfer() {
             }
           }
         } else {
-          setLoading((cur) => {
-            return { ...cur, old: false };
-          });
           if (data.user) {
             setOldUser(data.user);
             sessionStorage.setItem('old_user', JSON.stringify(data.user));
           }
         }
+        removeQueryParams();
       })
       .catch((err) => {
-        setLoading({ old: false, new: false });
         console.log('ERROR', err);
-      });
+        setErrorText('Error while fetching subreddits. Please try again later.');
+      })
+      .finally(() => setLoading({ old: false, new: false }));
   };
 
-  const setUsersFromStorage = () => {
+  const setUsersFromStorage = async () => {
     const oldFromStorage: UserObj = JSON.parse(sessionStorage.getItem('old_user') ?? 'null');
     if (!oldUser && oldFromStorage) {
       setOldUser(oldFromStorage);
@@ -85,6 +83,37 @@ function Transfer() {
     }
     if (newFromStorage && oldFromStorage) {
       setAlreadyAddedSubs(newFromStorage.subreddits.filter((x: string) => oldFromStorage.subreddits.includes(x)));
+    }
+  };
+
+  const refreshNewSubs = async () => {
+    const currentNewUser: UserObj = JSON.parse(sessionStorage.getItem('new_user') ?? 'null');
+    if (currentNewUser && oldUser && currentNewUser.subreddits.length < oldUser.subreddits.length) {
+      setLoading((cur) => {
+        return { ...cur, new: true };
+      });
+      const Reddit = new snoowrap({ accessToken: currentNewUser.token, userAgent });
+      let subscriptions = await (await Reddit).getSubscriptions({ limit: 100 });
+      if (!subscriptions.isFinished) {
+        for (let i = 0; i < 10; i++) {
+          subscriptions = await subscriptions.fetchMore({ amount: 100, append: true });
+          if (subscriptions.isFinished) {
+            break;
+          }
+        }
+      }
+      const subs = subscriptions
+        .filter((obj) => obj.display_name.slice(0, 2) !== 'u_')
+        .flatMap(({ display_name }) => display_name)
+        .sort();
+
+      const newU: UserObj = { ...currentNewUser, subreddits: subs };
+      console.log('newUSer', newU);
+      setNewUser(newU);
+      sessionStorage.setItem('new_user', JSON.stringify(newU));
+      setLoading((cur) => {
+        return { ...cur, new: false };
+      });
     }
   };
 
@@ -103,15 +132,18 @@ function Transfer() {
     window.open(AUTH_URL, '_self');
   }
 
-  console.log(selectedSubs && oldUser ? selectedSubs.map((i) => oldUser.subreddits[i]) : []);
   return (
     <div style={{ width: '100%', maxWidth: 1120, marginBottom: 30 }}>
       <header>
+        {errorText.length ? <Alert severity='error'>{errorText}</Alert> : null}
         <h1 style={{ marginBottom: 40 }}>Transfer your subreddits</h1>
       </header>
       <SubscribeModal
         open={modalOpen}
-        handleClose={() => setModalOpen(false)}
+        handleClose={async () => {
+          setModalOpen(false);
+          await refreshNewSubs();
+        }}
         subreddits={selectedSubs && oldUser ? selectedSubs.map((i) => oldUser.subreddits[i]) : []}
         token={newUser ? newUser.token : ''}
       />
@@ -205,7 +237,12 @@ function Transfer() {
                   disabledSubreddits={alreadyAddedSubs}
                   selectedSubsChanged={setSelectedSubs}
                 />
-                <Button onClick={() => setModalOpen(true)} variant='contained' sx={{ padding: 1, margin: 1 }}>
+                <Button
+                  onClick={() => setModalOpen(true)}
+                  variant='contained'
+                  sx={{ padding: 1, margin: 1 }}
+                  disabled={!newUser || !oldUser}
+                >
                   Subscribe to {selectedSubs.length} Subreddits
                 </Button>
               </Box>
