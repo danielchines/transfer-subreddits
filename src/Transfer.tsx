@@ -1,65 +1,78 @@
-import React, { useCallback } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { CircularProgress, Grid, Paper, Button, Box } from '@mui/material';
-import { RedditLoginState, SubredditObj, UserObj } from './types';
+import { UserObj } from './types';
 import SubredditList from './SubredditList';
 import Avatar from '@mui/material/Avatar';
 import Chip from '@mui/material/Chip';
+import SubscribeModal from './SubscribeModal';
 
 function Transfer() {
   let { search } = useLocation();
-
   const [loading, setLoading] = useState({ old: false, new: false });
 
   // const [results, setResults] = useState<SubredditObj[]>([]);
   const [oldUser, setOldUser] = useState<UserObj | undefined>();
   const [newUser, setNewUser] = useState<UserObj | undefined>();
-  const [numSelected, setNumSelected] = useState(0);
+  const [selectedSubs, setSelectedSubs] = useState<number[]>([]);
   const [alreadyAddedSubs, setAlreadyAddedSubs] = useState<string[]>([]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const removeQueryParams = () => {
+    const param = searchParams.get('code');
+    if (param) {
+      searchParams.delete('code');
+      searchParams.delete('state');
+      setSearchParams(searchParams);
+    }
+  };
 
   useEffect(() => {
-    const query = new URLSearchParams(search);
-    const state: string = query.get('state') ?? 'transfer_subs_old';
+    const state: string = searchParams.get('state') ?? 'transfer_subs_old';
     // TODO: URL ENCODE
-    const authCode = query.get('code');
+    const authCode = searchParams.get('code');
     if (!authCode) {
-      clearSessionStorage();
+      setUsersFromStorage();
     } else {
       setLoading({ old: state === 'transfer_subs_old', new: state === 'transfer_subs_new' });
-      fetch(`http://localhost:3001/login_redirect?code=${authCode}&state=${state}`)
-        .then((response) => response.json())
-        .then((data) => {
-          console.log('state:', state);
-          if (state === 'transfer_subs_new') {
-            setLoading((cur) => {
-              return { ...cur, new: false };
-            });
-            if (data.user) {
-              setNewUser(data.user);
-              sessionStorage.setItem('new_user', JSON.stringify(data.user));
-              const oldFromStorage: UserObj = JSON.parse(sessionStorage.getItem('old_user') ?? 'null');
-              if (!!oldFromStorage) {
-                setAlreadyAddedSubs(data.user.subreddits.filter((x: string) => oldFromStorage.subreddits.includes(x)));
-              }
-            }
-          } else {
-            setLoading((cur) => {
-              return { ...cur, old: false };
-            });
-            if (data.user) {
-              setOldUser(data.user);
-              sessionStorage.setItem('old_user', JSON.stringify(data.user));
+      callRedirect(authCode, state);
+      removeQueryParams();
+    }
+  }, [searchParams]);
+
+  const callRedirect = (authCode: string, state: string) => {
+    fetch(`http://localhost:3001/login_redirect?code=${authCode}&state=${state}`)
+      .then((response) => response.json())
+      .then((data) => {
+        console.log('state:', state);
+        if (state === 'transfer_subs_new') {
+          setLoading((cur) => {
+            return { ...cur, new: false };
+          });
+          if (data.user) {
+            setNewUser(data.user);
+            sessionStorage.setItem('new_user', JSON.stringify(data.user));
+            const oldFromStorage: UserObj = JSON.parse(sessionStorage.getItem('old_user') ?? 'null');
+            if (!!oldFromStorage) {
+              setAlreadyAddedSubs(data.user.subreddits.filter((x: string) => oldFromStorage.subreddits.includes(x)));
             }
           }
-        })
-        .catch((err) => {
-          setLoading({ old: false, new: false });
-          console.log('ERROR', err);
-        });
-      setUsersFromStorage();
-    }
-  }, []);
+        } else {
+          setLoading((cur) => {
+            return { ...cur, old: false };
+          });
+          if (data.user) {
+            setOldUser(data.user);
+            sessionStorage.setItem('old_user', JSON.stringify(data.user));
+          }
+        }
+      })
+      .catch((err) => {
+        setLoading({ old: false, new: false });
+        console.log('ERROR', err);
+      });
+  };
 
   const setUsersFromStorage = () => {
     const oldFromStorage: UserObj = JSON.parse(sessionStorage.getItem('old_user') ?? 'null');
@@ -70,8 +83,8 @@ function Transfer() {
     if (!newUser && newFromStorage) {
       setNewUser(newFromStorage);
     }
-    if (!alreadyAddedSubs.length && newFromStorage && oldUser) {
-      setAlreadyAddedSubs(newFromStorage.subreddits.filter((x: string) => oldUser.subreddits.includes(x)));
+    if (newFromStorage && oldFromStorage) {
+      setAlreadyAddedSubs(newFromStorage.subreddits.filter((x: string) => oldFromStorage.subreddits.includes(x)));
     }
   };
 
@@ -90,11 +103,18 @@ function Transfer() {
     window.open(AUTH_URL, '_self');
   }
 
+  console.log(selectedSubs && oldUser ? selectedSubs.map((i) => oldUser.subreddits[i]) : []);
   return (
     <div style={{ width: '100%', maxWidth: 1120, marginBottom: 30 }}>
       <header>
         <h1 style={{ marginBottom: 40 }}>Transfer your subreddits</h1>
       </header>
+      <SubscribeModal
+        open={modalOpen}
+        handleClose={() => setModalOpen(false)}
+        subreddits={selectedSubs && oldUser ? selectedSubs.map((i) => oldUser.subreddits[i]) : []}
+        token={newUser ? newUser.token : ''}
+      />
       <Grid container spacing={4} justifyContent='center'>
         <Grid item xs={5} md={5}>
           <Paper sx={{ minHeight: 300, alignitems: 'center' }}>
@@ -183,10 +203,10 @@ function Transfer() {
                   selectable={true}
                   subreddits={oldUser ? oldUser.subreddits : []}
                   disabledSubreddits={alreadyAddedSubs}
-                  numberSelectedChanged={(num) => setNumSelected(num)}
+                  selectedSubsChanged={setSelectedSubs}
                 />
-                <Button onClick={() => console.log('transfer')} color='primary' sx={{ padding: 2 }}>
-                  Subscribe to {numSelected} Subreddits
+                <Button onClick={() => setModalOpen(true)} variant='contained' sx={{ padding: 1, margin: 1 }}>
+                  Subscribe to {selectedSubs.length} Subreddits
                 </Button>
               </Box>
             )}

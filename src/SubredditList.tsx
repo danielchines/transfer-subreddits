@@ -9,13 +9,13 @@ import ListItemText from '@mui/material/ListItemText';
 
 interface Props {
   subreddits: string[];
-  numberSelectedChanged?: (num: number) => void;
+  selectedSubsChanged?: (checked: number[]) => void;
   disabledSubreddits?: string[];
   selectable: boolean;
 }
 
 export default function SubredditList(props: Props) {
-  const { subreddits, numberSelectedChanged, disabledSubreddits, selectable } = props;
+  const { subreddits, selectedSubsChanged, disabledSubreddits, selectable } = props;
   const [checked, setChecked] = React.useState<number[]>([]);
 
   const handleToggle = (value: number) => () => {
@@ -36,8 +36,8 @@ export default function SubredditList(props: Props) {
   }, [subreddits]);
 
   React.useEffect(() => {
-    if (numberSelectedChanged !== undefined) {
-      numberSelectedChanged(checked.length);
+    if (selectedSubsChanged !== undefined) {
+      selectedSubsChanged(checked);
     }
   }, [checked]);
 

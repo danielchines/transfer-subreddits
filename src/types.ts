@@ -9,6 +9,7 @@ export interface UserObj {
   username: string;
   profile_pic: string;
   subreddits: string[];
+  token: string;
 }
 
 export type RedditLoginState = 'transfer_subs_old' | 'transfer_subs_new';
