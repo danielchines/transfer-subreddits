@@ -38,7 +38,7 @@ function Transfer() {
     if (!authCode) {
       setUsersFromStorage();
     } else {
-      setLoading({ old: true, new: state === 'transfer_subs_new' });
+      setLoading({ old: state === 'transfer_subs_old', new: state === 'transfer_subs_new' });
       callRedirect(authCode, state);
     }
   }, [searchParams]);
@@ -47,7 +47,6 @@ function Transfer() {
     fetch(`http://localhost:3001/login_redirect?code=${authCode}&state=${state}`)
       .then((response) => response.json())
       .then((data) => {
-        console.log('state:', state);
         if (state === 'transfer_subs_new') {
           if (data.user) {
             setNewUser(data.user);
@@ -108,7 +107,6 @@ function Transfer() {
         .sort();
 
       const newU: UserObj = { ...currentNewUser, subreddits: subs };
-      console.log('newUSer', newU);
       setNewUser(newU);
       sessionStorage.setItem('new_user', JSON.stringify(newU));
       setLoading((cur) => {
